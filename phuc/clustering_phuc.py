@@ -11,6 +11,7 @@ from nltk import ngrams
 import numpy as np
 import matplotlib.patches as mpatches
 from pyvis.network import Network
+from scipy.stats import chi2_contingency
 
 # Hàm để tính khoảng cách polar giữa hai chuỗi hành động
 def polar_distance(list1, list2, n):
@@ -82,11 +83,9 @@ def create_graph(table_data, distance_function, threshold, attributes):
         
     return G
 
-# Hàm gom cụm bằng thuật toán Louvain
-def lovain_algorithm(G):
-    # Sử dụng thuật toán Louvain để phân cụm
-    partition = community_louvain.best_partition(G)
 
+#Hàm chuyển Partition thành Clusters
+def turn_to_clusters(partition):
     clusters = {}
 
     for session_id, cluster_id in partition.items():
@@ -196,11 +195,13 @@ def label(attribute, value):
     else:
         return 'Unknown attribute'
 
+
+
 # Đọc dữ liệu từ CSV
 df = pd.read_csv('e-shop clothing 2008.csv', sep = ';')
 
 # Lấy ra n dòng đầu tiên từ dữ liệu cho trước
-data = df.head(n = 5828)
+data = df.head(n = 7078)
 
 # Nhóm dữ liệu theo session ID, nó trả về DataFrame bao gồm nhiều cột
 # Từ DataFrame ta lấy cột clothing model, biến nó thành list bằng apply()
@@ -211,7 +212,12 @@ data = df.head(n = 5828)
 # filtered_grouped = grouped_clothingmodel[grouped_clothingmodel['page 2 (clothing model)'].apply(lambda x: len(x) > 2)]
 
 # Danh sách thuộc
-attributes = ['page 2 (clothing model)', 'colour', 'location', 'model photography', 'price 2', 'page']
+# attributes = ['page 2 (clothing model)', 'colour', 'location', 'model photography', 'price 2', 'page']
+# attributes = ['page 2 (clothing model)', 'colour', 'model photography', 'page']
+# attributes = ['page 2 (clothing model)', 'model photography', 'page']
+attributes = ['model photography', 'page']
+# attributes = ['page 2 (clothing model)', 'page']
+# attributes = ['model photography']
 
 columns_name = ['session ID'] + attributes 
 grouped = pd.DataFrame(columns = columns_name)
@@ -235,13 +241,48 @@ filtered_components = [component for component in connected_components if len(co
 sub_graphs = [G.subgraph(component).copy() for component in filtered_components]
 
 
-# # Đưa các đồ thị liên thông vào, tiến hành gom cụm cho từng đồ thị
+# cluster_values = [4, 8, 12, 15, 17, 18, 20, 23, 24, 31, 33, 44, 49, 50, 57, 64, 67, 69, 70, 76, 79, 84, 94, 99, 107, 110, 116, 123, 143, 144, 146, 148, 157, 160, 164, 165, 170, 173, 174, 177, 179, 181, 184, 186, 187, 188, 192, 193, 194, 211, 212, 214, 215, 217, 220, 222, 225, 226, 232, 233, 236, 238, 239, 242, 244, 247, 248, 249, 253, 264, 273, 275, 276, 278, 279, 282, 287, 295, 301, 304, 314, 316, 320, 321, 324, 325, 327, 331, 332, 334, 335, 336, 337, 342, 343, 344, 347, 350, 364, 372, 375, 381, 383, 384, 386, 391, 395, 414, 416, 417, 420, 422, 424, 435, 437, 441, 443, 454, 459, 460, 463, 464, 466, 469, 471, 476, 477, 479, 480, 485, 486, 488, 492, 493, 497, 501, 506, 507, 512, 513, 514, 518, 522, 525, 529, 531, 533, 537, 539, 542, 544, 547, 550, 553, 554, 563, 568, 572, 574, 583, 584, 591, 594, 597, 600, 603, 604, 606, 607, 608, 610, 615, 621, 623, 624, 628, 629, 631, 641, 645, 648, 650, 659, 660, 676, 677, 681, 690, 694, 695, 702, 708, 718, 719, 720, 722, 727, 735, 739, 744, 746, 751, 757, 764, 769, 772, 774, 779, 795, 800, 802, 803, 810, 811, 815, 822, 827, 828, 829, 830, 836, 837, 838, 842, 844, 845, 847, 848, 849]
+# sub_graphs = [G.subgraph(cluster_values).copy()]
+
+
+# Đưa các đồ thị liên thông vào, tiến hành gom cụm cho từng đồ thị
 for i, sub_graph in enumerate(sub_graphs):
-    clusters = lovain_algorithm(sub_graph)
+    partitions = community_louvain.best_partition(sub_graph)
+
+    cluster_list = []
+    for cluster_id in partitions.values():
+        cluster_list.append(cluster_id)
+    
+    sessionID_list = list(sub_graph.nodes())
+    filtered_df = df[df['session ID'].isin(sessionID_list)]
+    filtered_columns_df = filtered_df.loc[:, 'page 1 (main category)': 'page']
+    filtered_columns_df['cluster'] = df['session ID'].map(partitions)
+    
+    for attribute in attributes:
+        contingency = pd.crosstab(filtered_columns_df['cluster'], filtered_columns_df[attribute])
+        chi2, p_value, dof, expected = chi2_contingency(contingency)
+        print(f"{attribute}: Chi-Square: {chi2}, p-value: {p_value}") # < 0.05
+    
+    clusters = turn_to_clusters(partitions)
     show_graph(clusters, sub_graph, f"Big Graph {i}", showEdges=False)
     # for id, cluster in clusters.items():
     #     if len(cluster) > 1:
-    #         sub_graph1 = sub_graph.subgraph(cluster).copy()
-    #         clusters1 = lovain_algorithm(sub_graph1)
-    #         show_graph(clusters1, sub_graph1, f"Graph {id}", showEdges=False)
+            # sub_graph = G.subgraph(cluster).copy()
+            # partitions = community_louvain.best_partition(sub_graph)
+            # cluster_list = []
+            # for cluster_id in partitions.values():
+            #     cluster_list.append(cluster_id)
+            
+            # sessionID_list = list(sub_graph.nodes())
+            # filtered_df = df[df['session ID'].isin(sessionID_list)]
+            # filtered_columns_df = filtered_df.loc[:, 'page 1 (main category)': 'page']
+            # filtered_columns_df['cluster'] = df['session ID'].map(partitions)
+            # mini_atti
 
+            # for attribute in attributes:
+            #     contingency = pd.crosstab(filtered_columns_df['cluster'], filtered_columns_df[attribute])
+            #     chi2, p_value, dof, expected = chi2_contingency(contingency)
+            #     print(f"{attribute}: Chi-Square: {chi2}, p-value: {p_value}")
+            
+            # clusters = turn_to_clusters(partitions)
+            # show_graph(clusters, sub_graph, f"Big Graph {i}", showEdges=False)
