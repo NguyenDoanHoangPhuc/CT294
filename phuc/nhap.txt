@@ -1,0 +1,73 @@
+
+TableData:
+sessionID | attributes
+1 
+2
+3
+
+class similarity_graph:
+    attribute: adjacency_matrix
+    function:
+    - init(self, table_data):
+        + num_nodes = self.get_num_nodes(table_data)
+        + adjacency_matrix = self.build_adjacency_matrix(table_datsa)
+
+    - build_graph(self, attributes, threshold):
+        matrix = self.adjacency_matrix
+        
+        G = nx.Graph()
+
+        add_node()
+        
+        for x in range(1, self.num_nodes+1):
+            for y in range(x+1, self.num_nodes+1):
+                sum = 0
+                for attribute in attributes:
+                    sum += self.matrix[x][y][attribute]
+                avg = sum / len(attributes)
+                if avg > threshold:
+                    G.add_edge()
+        return G
+
+        
+    - get_num_nodes(self, table_data):
+        return table_data[sessionID].max
+        
+    - build_adjacency_matrix(self, table_data):
+        attributes = table_data.columns
+        attributes.pop(0)
+
+        n = table_data[sessionID].max()
+        default_dict = {}
+        for attribute in attributes:
+            default_dict[attribute] = 0
+        x matrix = [[default_dict] * v for _ in range(n)]
+
+        
+        for (row1 in table_data.itterows()):
+            sessionID1 = row1[sessionID]
+            for (row2 in table_data.itterows()):
+                sessionID2 = row2[sessionID]
+                if (sessionID2 > sessionID1):
+                    edge_dict = {}
+                    for attribute in attributes:
+                        edge_dict[attribute] = 0.5 - polar_distance()
+                    matrix[sessionID1-1][sessionID2-1] = tuple(edge_dict)
+        return matrix
+
+    - show_graph(self, )    
+
+
+Xin chào Chatgbt,
+Hiện tại tôi đang có một dự án Machine Learning, đề tài là phân tích hành vi người dùng từ dữ liệu click chuột.
+Tập dữ liệu của tôi bao gồm các trường thuộc tính: sessionID, category, itemID, colour, location,...
+Tôi tiếp cận vấn đề như sau:
+- Tôi tìm khoảng cách polar (cosine) giữa các thuộc tính thông qua tần suất chuẩn hóa của từng sessionID với nhau  
+- Tôi tạo một đồ thị với đỉnh là sessionID, cạnh là trung bình khoảng cách của những thuộc tính tôi tìm được
+- Tôi dùng thuật toán Louvain để phân cụm đồ thị
+- Sau đó, tôi sử dụng silhouette để đánh giá chất lượng phân cụm
+- Nếu silhouette quá thấp (chất lượng phân cụm không tốt) tôi sẽ tính Chi-bình phương của từng thuộc tính trong cụm, sau đó loại bỏ các thuộc tính có p-value thấp
+- Nếu silhouette quá thấp mà tôi không loại được thuộc tính nào, tôi sẽ tăng ngưỡng để giảm số lượng cạnh đồ thị
+Tuy nhiên, kết quả của tôi cho ra silhouette rất thấp (dưới 0.2). Hãy giả sử bạn là một chuyên gia về máy học, hãy cho tôi lời khuyên:
+- Tại sao chỉ số silhouette của tôi lại thấp như vậy? Bạn có đề xuất cách nào để cải thiện điều này không?
+- Hãy nhìn qua quy trình của tôi, liệu trong quy trình tôi có sai phạm gì không? Cách khắc phục là gì?
