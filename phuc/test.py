@@ -1,2 +1,8 @@
-for i in range(0, 11, 5):
-    print(i)
+
+def remove(str):
+    str.remove('a')
+
+str_list = ['a', 'b', 'c', 'd', 'e']
+
+remove(str_list)
+print(str_list)

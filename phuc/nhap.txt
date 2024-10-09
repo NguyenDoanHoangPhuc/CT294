@@ -71,3 +71,16 @@ Tôi tiếp cận vấn đề như sau:
 Tuy nhiên, kết quả của tôi cho ra silhouette rất thấp (dưới 0.2). Hãy giả sử bạn là một chuyên gia về máy học, hãy cho tôi lời khuyên:
 - Tại sao chỉ số silhouette của tôi lại thấp như vậy? Bạn có đề xuất cách nào để cải thiện điều này không?
 - Hãy nhìn qua quy trình của tôi, liệu trong quy trình tôi có sai phạm gì không? Cách khắc phục là gì?
+
+
+While (threshold chưa đạt tối đa) và (chưa có break_flag):
+- Khởi tạo đồ thị
+- Phân cụm đồ thị
+- Tính toán giá trị modularity của đồ thị
+
+Nếu giá trị modularity >= 0.7:
+    - Gán break_flag = True
+    - Lưu lại kết quả
+Ngược lại (modularity < 0.7) thì:
+    - Cắt tỉa thuộc tính()
+    - Nếu cắt tỉa thuộc tính thất bại => Tăng threshold, khôi phục attribute

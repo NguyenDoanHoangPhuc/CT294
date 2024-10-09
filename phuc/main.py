@@ -91,40 +91,43 @@ def label(attribute, value):
 
 def clustering(graph):
     partitions = community_louvain.best_partition(graph, randomize=True, resolution=1)
-    labels = [partitions[node] for node in graph.nodes()]
     modularity = community_louvain.modularity(partitions, graph)
 
-    if len(set(labels)) >= 2:  # Make sure there are at least 2 clusters
-        silhouette = silhouette_score(nx.to_numpy_array(graph), labels)
-    else:
-        silhouette = -1  # Invalid silhouette score if only 1 cluster exists
-
-    return partitions, silhouette, modularity
+    return partitions, modularity
 
 def remove_attribute(attributes, graph, data):
+    
+    if len(attributes) == 1:
+        return False
+    
     sessionID_list = list(graph.nodes())
     filtered_df = data[data['session ID'].isin(sessionID_list)]
     filtered_columns_df = filtered_df.loc[:, 'page 1 (main category)': 'page']
     filtered_columns_df['cluster'] = data['session ID'].map(partitions)
                 
+    flag = False
     for attribute in attributes:
         contingency = pd.crosstab(filtered_columns_df['cluster'], filtered_columns_df[attribute])
         chi2, p_value, dof, expected = chi2_contingency(contingency)
-        if p_value > 0.05 and len(attributes) > 1:
+        if p_value > 0.05:
+             flag = True
              attributes.remove(attribute)
-    return attributes                 
+
+    if len(attributes) == 0:
+        return False
+    return flag              
 
 # Đọc dữ liệu từ CSV
 df = pd.read_csv('e-shop clothing 2008.csv', sep = ';')
 
 # Lấy ra n dòng đầu tiên từ dữ liệu cho trước
-data = df.head(n = 3421)
+data = df.head(n = 30620)
 
 default_attributes = ['page 1 (main category)','page 2 (clothing model)', 'colour', 'location', 'model photography', 'price 2', 'page']
 
 result = []
 
-n_grams = 2
+n_grams = 5
 main_columns_name = ['session ID'] + default_attributes 
 main_grouped = pd.DataFrame(columns = main_columns_name)
 for idx, attribute in enumerate(default_attributes):
@@ -134,67 +137,58 @@ for idx, attribute in enumerate(default_attributes):
     main_grouped['session ID'] = filtered_temp['session ID']
 
 graph_data = similarity_graph(main_grouped, n_grams)
-# myGraph = graph_data.get_knn_graph(default_attributes, 0, 15)
 
-nodes_list = []
-nodes_list.append(data['session ID'].tolist())
-nodes_list2 = []
+graph_data.create_sample_graph(data)
+clusters_result = []
 
-for nodes in nodes_list:
-    # Tao nhung thuoc tinh can thiet cho qua trinh phan cum
-    threshold = 0
-    attributes = default_attributes.copy()
-    # Bien kiem soat xem vong lap phan cum chay bao nhieu lan
-    cluster_loop_count = 0
-    # Co bien kiem soat de thoat vong lap
-    break_flag = False
+
+# Tao nhung thuoc tinh can thiet cho qua trinh phan cum
+threshold = 0
+attributes = default_attributes.copy()
+# Bien kiem soat xem vong lap phan cum chay bao nhieu lan
+cluster_loop_count = 0
+# Co bien kiem soat de thoat vong lap
+break_flag = False
+
+best_partitions = None
+best_modularity = -100
+best_graph = None
+
+minimum_divistion = 0.01
+max_cluser_loop_count = 0.5 / minimum_divistion 
+
+while cluster_loop_count < max_cluser_loop_count and not break_flag:
+    cluster_loop_count += 1
     
-    best_silhouette = -100
-    best_partitions = None
-    best_modularity = -100
+    # Tu bang grouped, ta tao duoc do thi tuong dong tu lop SimilarityGraph
+    graph = graph_data.remove_singleton(graph_data.get_knn_graph(attributes, threshold, 10))
+    
+    partitions, modularity = clustering(graph)
 
-    minimum_divistion = 0.03
-    max_cluser_loop_count = 0.5 / minimum_divistion 
+    if modularity > best_modularity:
+        best_modularity = modularity
+        best_partitions = partitions
+        best_graph = graph
 
-    while cluster_loop_count < max_cluser_loop_count and not break_flag:
-        cluster_loop_count += 1
-        
-        # Tu bang grouped, ta tao duoc do thi tuong dong tu lop SimilarityGraph
-        temp = graph_data.get_knn_graph(attributes, threshold, 10)
-        graph = graph_data.remove_singleton(temp)
-        myGraph = graph
-        result = clustering(graph)
-        partitions = result[0]
-        silhouette_louvain = result[1]
-        modularity = result[2]
-
-        if modularity > best_modularity:
-            best_modularity = modularity
-            best_partitions = partitions
-
-        # Neu chi so silhouette phu hop thi them vao nodes_list2, ket thuc vong lap
-        if modularity >= 0.7:
-            clusters = turn_to_clusters(partitions)
-            print("Modularity: ", modularity)
-            for cluster_id, cluster in clusters.items():
-                nodes_list2.append(cluster)
-            break_flag = True
-        # Neu chi so silhouette khong phu hop, ma khong co thuoc tinh nao de loai thi ta giam nguong threshold
-        elif len(attributes) <= 1:
-            threshold += minimum_divistion
-            attributes = default_attributes.copy()
-        # Neu chi so silhouette khong phu hop, ta loai bo thuoc tinh khong phu hop
-        else:
-            removed = remove_attribute(attributes, graph, data)
-            if len(removed) == 0:
-                threshold += minimum_divistion
-                attributes = default_attributes.copy()     
-    if not break_flag:
-        print("Modularity: ", best_modularity)
-        clusters = turn_to_clusters(best_partitions)
+    # Neu chi so modularity phu hop thi them vao nodes_list2, ket thuc vong lap
+    if modularity >= 0.5:
+        best_graph = graph
+        clusters = turn_to_clusters(partitions)
+        print("Modularity: ", modularity)
         for cluster_id, cluster in clusters.items():
-            nodes_list2.append(cluster)
+            clusters_result.append(cluster)
+        break_flag = True
+    else:
+        removed = remove_attribute(attributes, graph, data)
+        if removed == False:
+            threshold += minimum_divistion
+            attributes = default_attributes.copy()     
 
-nodes_list = nodes_list2.copy()
+if not break_flag:
+    print("Modularity: ", best_modularity)
+    clusters = turn_to_clusters(best_partitions)
+    for cluster_id, cluster in clusters.items():
+        clusters_result.append(cluster)
 
-similarity_graph.show_graph(myGraph, nodes_list, showLegend = True, showEdges = False, showWeights = False)
+ 
+similarity_graph.show_graph(best_graph, clusters_result, showLegend = True, showEdges = False, showWeights = False)
