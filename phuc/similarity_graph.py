@@ -56,8 +56,10 @@ class LimitedSortedArray:
 
     def add(self, value):
         if len(self.data) >= self.max_length:
-            # Remove the oldest element (at index 0)
-            self.data.pop(0)
+            if (value[0] > self.data[0][0]):
+                self.data.pop(0)
+            else:
+                return
         # Add the new value to the array
         self.data.append(value)
         # Sort the array after each insertion
@@ -72,6 +74,7 @@ class similarity_graph:
         self.table_data = table_data
         self.num_nodes = self.get_num_nodes()
         self.adjacency_matrix = self.get_adjacency_matrix()
+        self.graph = nx.Graph()
 
         
     def get_num_nodes(self):
@@ -102,13 +105,14 @@ class similarity_graph:
     
         return matrix
 
+    def create_sample_graph(self,data):
+        for sessionID in data['session ID']:
+            self.graph.add_node(sessionID)
+
     def get_graph(self, attributes, threshold):
         data = self.table_data
     
-        G = nx.Graph()
-
-        for sessionID in data['session ID']:
-            G.add_node(sessionID)
+        G = self.graph.copy()
 
         for idx1, row1 in data.iterrows():
             session_id1 = row1['session ID']
@@ -122,17 +126,14 @@ class similarity_graph:
 
                     average_distance = sum / len(attributes)
                     if average_distance > threshold:
-                        G.add_edge(session_id1, session_id2, weight= average_distance * 5)                
+                        G.add_edge(session_id1, session_id2, weight= average_distance)                
         return G
 
     def get_knn_graph(self, attributes, threshold, k):
         data = self.table_data
     
-        G = nx.Graph()
-
-        for sessionID in data['session ID']:
-            G.add_node(sessionID)
-
+        G = self.graph.copy()
+    
         for idx1, row1 in data.iterrows():
             session_id1 = row1['session ID']
 
