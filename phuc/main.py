@@ -1,4 +1,5 @@
 
+from collections import Counter
 import pprint
 from matplotlib import cm
 import matplotlib
@@ -121,22 +122,24 @@ def remove_attribute(attributes, graph, data):
 df = pd.read_csv('e-shop clothing 2008.csv', sep = ';')
 
 # Lấy ra n dòng đầu tiên từ dữ liệu cho trước
-data = df.head(n = 30620)
+data = df.head(n = 34082)
 
 default_attributes = ['page 1 (main category)','page 2 (clothing model)', 'colour', 'location', 'model photography', 'price 2', 'page']
 
 result = []
 
-n_grams = 5
+n_grams = 4
 main_columns_name = ['session ID'] + default_attributes 
 main_grouped = pd.DataFrame(columns = main_columns_name)
 for idx, attribute in enumerate(default_attributes):
     temp = data.groupby('session ID')[attribute].apply(list).reset_index()
     filtered_temp = temp[temp[attribute].apply(lambda x: len(x) >= n_grams)]
-    main_grouped[attribute] = filtered_temp[attribute]
+    main_grouped[attribute] = filtered_temp[attribute].apply(lambda x: list(ngrams(x, n_grams)))
     main_grouped['session ID'] = filtered_temp['session ID']
 
+
 graph_data = similarity_graph(main_grouped, n_grams)
+
 
 graph_data.create_sample_graph(data)
 clusters_result = []
@@ -153,15 +156,16 @@ break_flag = False
 best_partitions = None
 best_modularity = -100
 best_graph = None
+best_attributes = None
 
-minimum_divistion = 0.01
+minimum_divistion = 0.02
 max_cluser_loop_count = 0.5 / minimum_divistion 
 
 while cluster_loop_count < max_cluser_loop_count and not break_flag:
     cluster_loop_count += 1
     
     # Tu bang grouped, ta tao duoc do thi tuong dong tu lop SimilarityGraph
-    graph = graph_data.remove_singleton(graph_data.get_knn_graph(attributes, threshold, 10))
+    graph = graph_data.remove_singleton(graph_data.get_knn_graph(attributes, threshold, 5))
     
     partitions, modularity = clustering(graph)
 
@@ -169,10 +173,12 @@ while cluster_loop_count < max_cluser_loop_count and not break_flag:
         best_modularity = modularity
         best_partitions = partitions
         best_graph = graph
+        best_attributes = attributes
 
     # Neu chi so modularity phu hop thi them vao nodes_list2, ket thuc vong lap
     if modularity >= 0.5:
         best_graph = graph
+        best_attributes = attributes
         clusters = turn_to_clusters(partitions)
         print("Modularity: ", modularity)
         for cluster_id, cluster in clusters.items():
@@ -190,5 +196,23 @@ if not break_flag:
     for cluster_id, cluster in clusters.items():
         clusters_result.append(cluster)
 
- 
+for idx, cluster in enumerate(clusters_result):
+    table = main_grouped[main_grouped['session ID'].isin(cluster)]
+    print(f"\n\n----CLUSTER {idx}: ----")
+    for attribute in best_attributes:
+        all_ngrams = []
+
+        # Loop through each row in the specified column
+        for row in table[attribute]:
+            all_ngrams.extend(row)
+        
+        # Count the frequency of each n-gram
+        ngram_counts = Counter(all_ngrams)
+        print(f"{attribute}: {ngram_counts.most_common(2)}")
+    
+print(best_attributes)
+print(threshold)
 similarity_graph.show_graph(best_graph, clusters_result, showLegend = True, showEdges = False, showWeights = False)
+
+
+
