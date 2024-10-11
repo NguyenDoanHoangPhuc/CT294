@@ -1,0 +1,77 @@
+
+
+7. PAGE 1 (MAIN CATEGORY): Loại mặt hàng
+1- Quần 
+2- Váy 
+3- Áo blouses
+4- Giảm giá
+
+========================================================
+
+8. PAGE 2 (CLOTHING MODEL) -> ID món hàng (sử dụng cho việc gợi ý là chủ yếu)
+
+========================================================
+
+9. COLOUR -> Màu sắc
+1- Màu be
+2- Đen
+3- Màu xanh
+4- Nâu
+5- Burgundy (màu đỏ thẫm, pha tím)
+6- Xám
+7- Màu xanh lá cây
+8- Màu xanh hải quân
+9- Nhiều màu khác nhau
+10- Ô-liu (Hơi giống xanh lá chuối)
+11- hồng
+12- Đỏ
+13- Violet
+14- Trắng
+
+========================================================
+
+10. LOCATION -> vị trí tấm hình trên trang, được chia làm 6 vị trí khác nhau
+
+1- phía trên bên trái
+2- phía trên ở giữa
+3- phía trên bên phải
+4- phía dưới bên trái
+5- phía dưới ở giữa
+6- phía dưới bên phải
+
+========================================================
+
+11. MODEL PHOTOGRAPHY -> Mẫu ảnh
+
+1- Chụp cận mặt
+2- Chụp một bên
+
+========================================================
+
+12. PRICE -> price in US dollars
+
+========================================================
+
+13. PRICE 2 -> variable informing whether the price of a particular product is higher than 
+the average price for the entire product category
+
+1-yes
+2-no
+
+========================================================
+
+14. PAGE -> page number within the e-store website (from 1 to 5)
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+If you use this dataset, please cite:
+
+£apczyñski M., Bia³ow¹s S. (2013) Discovering Patterns of Users' Behaviour in an E-shop - 
+Comparison of Consumer Buying Behaviours in Poland and Other European Countries, 
+“Studia Ekonomiczne”, nr 151, “La société de l'information : perspective européenne et 
+globale : les usages et les risques d'Internet pour les citoyens et les consommateurs”, p. 144-
+153.
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+

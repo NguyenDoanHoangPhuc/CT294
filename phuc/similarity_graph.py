@@ -7,10 +7,7 @@ import numpy as np
 from nltk import ngrams
 
 # Hàm để tính khoảng cách polar giữa hai chuỗi hành động
-def polar_distance(list1, list2, n):
-    # Tìm danh sách n-grams từ hai chuỗi ban đầu
-    ngrams_list1 = list(ngrams(list1, n))
-    ngrams_list2 = list(ngrams(list2, n))
+def polar_distance(ngrams_list1, ngrams_list2):
 
     # Tìm phần hợp giữa hai danh sách
     union_ngrams = ngrams_list1 + ngrams_list2
@@ -96,9 +93,9 @@ class similarity_graph:
                 if (session_id2 > session_id1):
                     edge_dict = {}
                     for attribute in attributes:
-                        clothing_models1 = tuple(row1[attribute])
-                        clothing_models2 = tuple(row2[attribute])
-                        edge_dict[attribute] = 0.5 - polar_distance(clothing_models1, clothing_models2, self.n_grams)
+                        clothing_models1 = list(row1[attribute])
+                        clothing_models2 = list(row2[attribute])
+                        edge_dict[attribute] = 0.5 - polar_distance(clothing_models1, clothing_models2)
 
                     matrix[session_id1-1][session_id2-1] = edge_dict
                     matrix[session_id2-1][session_id1-1] = edge_dict
