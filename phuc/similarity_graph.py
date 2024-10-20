@@ -1,4 +1,5 @@
 import pprint
+from joblib import Parallel, delayed
 import matplotlib
 from matplotlib import pyplot as plt
 import networkx as nx
@@ -6,9 +7,12 @@ import matplotlib.patches as mpatches
 import numpy as np
 from nltk import ngrams
 
+import threading
+from multiprocessing import Process
+
+
 # Hàm để tính khoảng cách polar giữa hai chuỗi hành động
 def polar_distance(ngrams_list1, ngrams_list2):
-
     # Tìm phần hợp giữa hai danh sách
     union_ngrams = ngrams_list1 + ngrams_list2
 
@@ -24,10 +28,9 @@ def polar_distance(ngrams_list1, ngrams_list2):
         frequency_vector1.append(ngrams_list1.count(ngram)/ len(ngrams_list1))
         frequency_vector2.append(ngrams_list2.count(ngram) / len(ngrams_list2))
 
-    #  distance = 1/pi x arccos(tích vô hướng hai vector / (độ dài vectơ 1 * độ dài vectơ 2))
+    # distance = 1/pi x arccos(tích vô hướng hai vector / (độ dài vectơ 1 * độ dài vectơ 2))
 
     # Tính tích vô hướng hai vectơ
-
     dot_product = sum(x * y for x, y in zip(frequency_vector1, frequency_vector2))
 
     # Tính độ dài của vectơ 1
@@ -44,6 +47,7 @@ def polar_distance(ngrams_list1, ngrams_list2):
 
     # Tìm khoảng cách polar
     polar_distance_result = (1 / np.pi) * np.arccos(cosine_similarity)
+    # print(polar_distance_result)
     return polar_distance_result
 
 class LimitedSortedArray:
@@ -81,25 +85,40 @@ class similarity_graph:
         table_data = self.table_data
         attributes = table_data.columns[1:]
         
-        default_dict = {}
-        for attribute in attributes:
-            default_dict[attribute] = 0
-        matrix = [[default_dict.copy() for _ in range(self.num_nodes)] for _ in range(self.num_nodes)]
+        num_nodes = table_data['session ID'].max()
+    
+        # Tạo từ điển mặc định cho các thuộc tính
+        def create_default_dict():
+            return {attribute: 0 for attribute in attributes}
 
-        for idx1, row1 in table_data.iterrows():
+        # Tạo ma trận với các từ điển mặc định
+        matrix = [[create_default_dict() for _ in range(num_nodes)] for _ in range(num_nodes)]
+
+        def compute_edge(idx1, row1):
             session_id1 = row1['session ID']
+            local_edges = []
             for idx2, row2 in table_data.iterrows():
                 session_id2 = row2['session ID']
-                if (session_id2 > session_id1):
+                if session_id2 > session_id1:
                     edge_dict = {}
                     for attribute in attributes:
-                        clothing_models1 = list(row1[attribute])
-                        clothing_models2 = list(row2[attribute])
+                        clothing_models1 = tuple(row1[attribute])
+                        clothing_models2 = tuple(row2[attribute])
                         edge_dict[attribute] = 0.5 - polar_distance(clothing_models1, clothing_models2)
+                    local_edges.append((session_id1, session_id2, edge_dict))
+            return local_edges
 
-                    matrix[session_id1-1][session_id2-1] = edge_dict
-                    matrix[session_id2-1][session_id1-1] = edge_dict
-    
+        # Gọi Parallel để chạy song song
+        results = Parallel(n_jobs=-1)(
+            delayed(compute_edge)(idx1, row1) for idx1, row1 in table_data.iterrows()
+        )
+
+        # Cập nhật ma trận từ kết quả
+        for local_edges in results:
+            for session_id1, session_id2, edge_dict in local_edges:
+                matrix[session_id1 - 1][session_id2 - 1] = edge_dict
+                matrix[session_id2 - 1][session_id1 - 1] = edge_dict
+
         return matrix
 
     def create_sample_graph(self,data):
