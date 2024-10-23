@@ -74,25 +74,17 @@ class similarity_graph:
         self.n_grams = n_grams
         self.table_data = table_data
         self.num_nodes = self.get_num_nodes()
-        self.adjacency_matrix = self.get_adjacency_matrix()
         self.graph = nx.Graph()
-
+        self.adj_matrices = {}
         
     def get_num_nodes(self):
         return self.table_data['session ID'].max()
 
-    def get_adjacency_matrix(self):
+    def write_adjacency_matrix(self):
+        n = self.num_nodes  
         table_data = self.table_data
-        attributes = table_data.columns[1:]
-        
-        num_nodes = table_data['session ID'].max()
-    
-        # Tạo từ điển mặc định cho các thuộc tính
-        def create_default_dict():
-            return {attribute: 0 for attribute in attributes}
-
-        # Tạo ma trận với các từ điển mặc định
-        matrix = [[create_default_dict() for _ in range(num_nodes)] for _ in range(num_nodes)]
+        attributes = table_data.columns[2:]
+        adj_matrix = np.memmap(f'adj_matrix.dat', dtype='float32', mode='w+', shape=(n, n))
 
         def compute_edge(idx1, row1):
             session_id1 = row1['session ID']
@@ -100,68 +92,57 @@ class similarity_graph:
             for idx2, row2 in table_data.iterrows():
                 session_id2 = row2['session ID']
                 if session_id2 > session_id1:
-                    edge_dict = {}
+                    avg = 0
                     for attribute in attributes:
                         clothing_models1 = tuple(row1[attribute])
                         clothing_models2 = tuple(row2[attribute])
-                        edge_dict[attribute] = 0.5 - polar_distance(clothing_models1, clothing_models2)
-                    local_edges.append((session_id1, session_id2, edge_dict))
+                        avg += 0.5 - polar_distance(clothing_models1, clothing_models2)
+                    avg /= len(attributes)
+                    local_edges.append((session_id1, session_id2, avg))
             return local_edges
 
-        # Gọi Parallel để chạy song song
+        print("Writing data...")
         results = Parallel(n_jobs=-1)(
             delayed(compute_edge)(idx1, row1) for idx1, row1 in table_data.iterrows()
         )
 
+        print("Updating adjacency matrix...")
         # Cập nhật ma trận từ kết quả
         for local_edges in results:
-            for session_id1, session_id2, edge_dict in local_edges:
-                matrix[session_id1 - 1][session_id2 - 1] = edge_dict
-                matrix[session_id2 - 1][session_id1 - 1] = edge_dict
+            for session_id1, session_id2, value in local_edges:
+                adj_matrix[session_id1 - 1, session_id2 - 1] = value
+        
+        print("Finished writing data!")
+        
+    def print_adjacency_matrix(self):
+        n = self.num_nodes
+        adj_matrix = np.memmap('adj_matrix.dat', dtype='float32', mode='r', shape=(n, n))
+        
+        for i in range(n):
+            for j in range(n):
+                print(f"{adj_matrix[i, j]:.2f}", end=" ")
+            print()
 
-        return matrix
 
     def create_sample_graph(self,data):
         for sessionID in data['session ID']:
             self.graph.add_node(sessionID)
 
-    def get_graph(self, attributes, threshold):
+    def get_knn_graph(self, threshold, k):
+
         data = self.table_data
-    
+        n = self.num_nodes
         G = self.graph.copy()
+
+        adj_matrix = np.memmap('adj_matrix.dat', dtype='float32', mode='r', shape=(n, n))
 
         for idx1, row1 in data.iterrows():
             session_id1 = row1['session ID']
-
-            for idx2, row2 in data.iterrows():
-                session_id2 = row2['session ID']
-                if (session_id2 > session_id1):
-                    sum = 0
-                    for attribute in attributes:
-                        sum += self.adjacency_matrix[session_id1-1][session_id2-1][attribute]
-
-                    average_distance = sum / len(attributes)
-                    if average_distance > threshold:
-                        G.add_edge(session_id1, session_id2, weight= average_distance)                
-        return G
-
-    def get_knn_graph(self, attributes, threshold, k):
-        data = self.table_data
-    
-        G = self.graph.copy()
-    
-        for idx1, row1 in data.iterrows():
-            session_id1 = row1['session ID']
-
             limited_arr = LimitedSortedArray(k)
             for idx2, row2 in data.iterrows():
                 session_id2 = row2['session ID']
                 if (session_id2 > session_id1):
-                    sum = 0
-                    for attribute in attributes:
-                        sum += self.adjacency_matrix[session_id1-1][session_id2-1][attribute]
-
-                    average_distance = sum / len(attributes)
+                    average_distance = adj_matrix[session_id1 - 1, session_id2 - 1]
                     if average_distance > threshold:
                         limited_arr.add([average_distance, session_id2])
 
@@ -208,7 +189,10 @@ class similarity_graph:
         if showLegend:
             plt.legend(handles=legend_items, loc="upper right", title="Cluster")
 
-        plt.show()
+        # Save the plot as an image file
+        plt.savefig("graph.png")
+        print("Saved the graph as graph.png")
+
 
     def remove_singleton(self, graph):
         connected_components = list(nx.connected_components(graph))

@@ -94,8 +94,23 @@ session ID  ...               page
 6  ...                                    [1, 1, 3, 1, 2]
 
 Bước 1: Ta cắt bảng chỉ chừa những dòng bao gồm sessionID trong tập dữ liệu tương ứng
+filtered = df[df[sessionID].isin(list_clustering)]
+
 Bước 2: Lấy giá trị của cột tương ứng, áp n-grams vào để được tập giá trị, thêm các giá trị tương ứng vào một list
+rows = filtered[attribute]
 Bước 3: Tính tần suất xuất hiện => Rút ra khoảng 5 n-grams phân bố nhiều nhất
+list_result = []
+for row in rows:
+    list_result.extend(ngrams(rows, 2))
+
 Bước 4: kết luận
+
+
+--------
+Việc phân chia n-grams nhiều lần (cho việc tính khoảng cách và gắn nhãn), có thể làm cho thuật toán chạy lâu hơn
+=> Chúng ta cần lưu lại n-grams để thuận tiện cho việc tính toán
+=> Chúng ta có thể lưu nó thành một DataFrame
+=> Thay main_grouped từ bảng giá trị ban đầu thành bảng giá trị lưu n-grams của các attribute
+=> Thay đổi hàm polar_distance
 
 

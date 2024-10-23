@@ -4,7 +4,13 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="628896c5-522d-40b6-9d05-2f9290dfd082" name="Changes" comment="Add Phuc folder" />
+    <list default="true" id="628896c5-522d-40b6-9d05-2f9290dfd082" name="Changes" comment="Add Phuc folder">
+      <change beforePath="$PROJECT_DIR$/phuc/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/phuc/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/phuc/nhap.txt" beforeDir="false" afterPath="$PROJECT_DIR$/phuc/nhap.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/phuc/similarity_graph.py" beforeDir="false" afterPath="$PROJECT_DIR$/phuc/similarity_graph.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/phuc/tempCodeRunnerFile.py" beforeDir="false" afterPath="$PROJECT_DIR$/phuc/tempCodeRunnerFile.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/phuc/test.py" beforeDir="false" afterPath="$PROJECT_DIR$/phuc/test.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -78,6 +84,7 @@
       <workItem from="1726669936936" duration="273000" />
       <workItem from="1726670380960" duration="346000" />
       <workItem from="1726835334351" duration="821000" />
+      <workItem from="1729683632974" duration="4000" />
     </task>
     <task id="LOCAL-00001" summary="Add Phuc folder">
       <option name="closed" value="true" />
