@@ -1,9 +1,7 @@
 
 from collections import Counter
-import pprint
 from joblib import Parallel, delayed
 from matplotlib import cm
-import matplotlib
 import pandas as pd
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -15,120 +13,127 @@ import matplotlib.patches as mpatches
 from pyvis.network import Network
 from scipy.stats import chi2_contingency
 from sklearn.metrics import silhouette_score
-
 from similarity_graph import similarity_graph, polar_distance, LimitedSortedArray
+import time
 
 #Hàm chuyển Partition thành Clusters
-def turn_to_clusters(partition):
+def turn_to_clusters(partition: list):
+    # Khởi tạo cluster là một từ điển rỗng
     clusters = {}
 
+    # Cặp partition của Louvain bao gồm sessionID và số cụm tương ứng
+    # Nếu số cụm chưa có trong thì tạo cho nó một mảng rỗng để thêm lần lượt các sesionID vào 
     for session_id, cluster_id in partition.items():
         if cluster_id not in clusters:
             clusters[cluster_id] = []
         clusters[cluster_id].append(session_id)
 
+    # Lọc ra những cụm chỉ chứa một phần tử duy nhất
     filtered_clusters = {cluster_id: members for cluster_id, members in clusters.items() if len(members) > 1}
     return filtered_clusters
 
-def analyze_cluster(cluster, dataset):
-    # Lọc các dòng trong dataset có sessionID thuộc cụm
-    filtered_data = dataset[dataset['session ID'].isin(cluster)]
 
-    # Các thuộc tính cần phân tích
-    attributes = ['page 1 (main category)', 'colour', 
-                  'location', 'model photography', 'price 2', 'page']
-    
-    # Tạo danh sách để lưu kết quả
-    analysis_results = []
-    labels = []
-
-    # Duyệt qua từng thuộc tính để tính giá trị chiếm nhiều nhất và phần trăm
-    for attribute in attributes:
-        value_counts = filtered_data[attribute].value_counts()
-        
-        if not value_counts.empty:
-            # Tìm giá trị chiếm nhiều nhất và phần trăm của nó
-            most_frequent_value = value_counts.idxmax()
-            percentage = (value_counts.max() / len(filtered_data)) * 100
-            
-            if percentage >= 50:
-                labels.append(label(attribute, most_frequent_value))
-            # Lưu kết quả
-            analysis_results.append({
-                'Attribute': attribute,
-                'Most Frequent Value': most_frequent_value,
-                'Percentage': f"{percentage:.2f}%"
-            })
-    
-    # Chuyển kết quả thành DataFrame để hiển thị dưới dạng bảng
-    results_df = pd.DataFrame(analysis_results)
-    
-    # In bảng kết quả
-    print("Labels of the cluster: \n", labels)
-    print(results_df)
-    return labels
-
-def label(attribute, value):
-    if attribute == 'page 1 (main category)':
-        name = ['trousers', 'skirts', 'blouses', 'sale']
-        return 'Category ' + name[value-1]
-    elif attribute == 'colour':
-        name = ['beige', 'black', 'blue', 'brown', 'burgundy', 'gray', 'green', 'navy blue', 'of many colors', 'olive', 'pink', 'red', 'violet', 'white']
-        return 'Color ' + name[value-1]
-    elif attribute == 'location':
-        name = ['top left', 'top in the middle', 'top right', 'bottom left', 'bottom in the middle', 'bottom right']
-        return 'Location ' + name[value-1]
-    elif attribute == 'model photography':
-        name = ['en-face', 'profile']
-        return 'Model Photography ' + name[value-1]
-    elif attribute == 'price 2':
-        if value == 1:
-            return 'Higher price product'
-        else:
-            return 'No higher price product'
-    elif attribute == 'page':
-        return 'Page ' + str(value)
-    else:
-        return 'Unknown attribute'
-
-def clustering(graph):
+# Hàm thực thi thuật toán Louvain
+# Trả về partition, chỉ số modularity và chỉ số sihouette
+def louvain_algorithm(graph: nx.Graph):
+    # Phân cụm và có được partitions cũng như modularity
     partitions = community_louvain.best_partition(graph, resolution=1)
     modularity = community_louvain.modularity(partitions, graph)
 
-    return partitions, modularity
+    # Đối với sihouette, nếu chỉ có một cụm duy nhất thì không tính được Sihouette
+    unique_clusters = set(partitions.values())
+    if len(unique_clusters) > 1:
+        silhouette = silhouette_score(nx.to_numpy_array(graph), list(partitions.values()), metric='euclidean')
+    else:
+        silhouette = None 
+    return partitions, modularity, silhouette
 
-def remove_attribute(attributes, graph, data):
-    
-    if len(attributes) == 1:
-        return False
-    
-    sessionID_list = list(graph.nodes())
-    filtered_df = data[data['session ID'].isin(sessionID_list)]
-    filtered_columns_df = filtered_df.loc[:, 'page 1 (main category)': 'page']
-    filtered_columns_df['cluster'] = data['session ID'].map(partitions)
-                
-    flag = False
-    for attribute in attributes:
-        contingency = pd.crosstab(filtered_columns_df['cluster'], filtered_columns_df[attribute])
-        chi2, p_value, dof, expected = chi2_contingency(contingency)
-        if p_value > 0.05:
-             flag = True
-             attributes.remove(attribute)
+# Hàm thực thi việc phân cụm cho đồ thị
+def cluster(graph_data: similarity_graph, length: int):
+    print("Start clustering...")
 
-    if len(attributes) == 0:
-        return False
-    return flag              
+    # Khai báo những chỉ số cần thiết cho việc phân cụm trong đồ thị
+    # Những giá trị partitions, modularity và sihouette tốt nhất mà việc phân cụm có thể có
+    best_partitions = None
+    best_modularity = -100
+    best_sihouette = -100
+
+    # Cụm tốt nhất, được tạo từ best_partitions
+    best_clusters = None
+
+    # Đồ thị lưu giá trị tốt nhất, dùng cho hiển thị đồ thị
+    best_graph = None
+    # Cụm được chia cho việc hiển thị đồ thị
+    best_show_cluster = []
+
+
+    # Cờ để dừng vòng lặp khi có giá trị tốt
+    break_flag = False
+    # Ngưỡng nhỏ nhất mà các cạnh cần phải lớn hơn để được thêm vào đồ thị
+    threshold = 0
+    # Biến đếm số lần lặp và số lần lặp tối đa
+    cluster_loop_count = 0
+    max_cluser_loop_count = 5
+
+    # Giá trị k trong thuật toán KNN Graph (được lấy tổng số đỉnh chia cho 2)
+    k = length // 2
+
+    # Hàm lặp khi chưa có cờ và số lần lặp chưa đạt tối đa
+    while cluster_loop_count <= max_cluser_loop_count and not break_flag:
+        
+        # Tăng biến đếm và thông báo cho người dùng
+        cluster_loop_count += 1
+        print(f"Cluster loop count: {cluster_loop_count}, k = {k} ")
+        
+        # Tạo đồ thị KNN Graph từ dữ liệu Similarity Graph (get knn graph)
+        # Sau đó tiến hành bỏ những phần tử không liên thông (remove singleton)
+        graph = graph_data.remove_singleton(graph_data.get_knn_graph(threshold, k))
+        
+        # Phân cụm đồ thị và lấy ra những giá trị tốt nhất
+        partitions, modularity, silhouette = louvain_algorithm(graph)
+
+        # In ra hai chỉ số tương ứng của lần lặp
+        print(modularity)
+        print(silhouette)
+
+        # Nếu chỉ số modularity đạt mức chấp nhận được, lưu lại các giá trị
+        if modularity > best_modularity:
+            best_modularity = modularity
+            best_sihouette = silhouette
+            best_partitions = partitions 
+            best_graph = graph
+
+
+        # Nếu chỉ số modularity đạt mức tốt => Ngưng vòng lặp
+        if modularity >= 0.3:
+            break_flag = True
+        else:
+            # Ngược lại, giảm giá trị k để tăng modularity
+            k //= 2
+        
+    # Chuyển partition thành cluster và cluster_show
+    best_clusters = turn_to_clusters(best_partitions)
+    for idx, cluster in best_clusters.items():
+        best_show_cluster.append(cluster)
+
+    print("Modularity: ", best_modularity)
+    print("Silhouette: ", best_sihouette)
+    
+    return best_partitions, best_modularity, best_sihouette, best_clusters, best_show_cluster, best_graph
+    
+
 
 # Đọc dữ liệu từ CSV
 df = pd.read_csv('e-shop clothing 2008.csv', sep = ';')
 
 # Lấy ra n dòng đầu tiên từ dữ liệu cho trước
-data = df.head(n = 10414)
+data = df.head(1539).copy()
 
-#34082
-default_attributes = ['page 1 (main category)','page 2 (clothing model)', 'colour', 'location', 'model photography', 'price 2', 'page']
+#
+default_attributes = ['page 2 (clothing model)', 'colour', 'location', 'page 1 (main category)', 'page']
 
-result = []
+
+start_time = time.time()
 
 n_grams = 3
 main_columns_name = ['session ID'] + default_attributes 
@@ -148,67 +153,20 @@ train_grouped = main_grouped.head(n = number_of_train)
 test_grouped = main_grouped.tail(n = number_of_test)
 
 graph_data = similarity_graph(train_grouped, n_grams)
+graph_data.write_adjacency_matrix()
 
 graph_data.create_sample_graph(data)
-clusters_result = []
 
-# Tao nhung thuoc tinh can thiet cho qua trinh phan cum
-threshold = 0
-attributes = default_attributes.copy()
-# Bien kiem soat xem vong lap phan cum chay bao nhieu lan
-cluster_loop_count = 0
-# Co bien kiem soat de thoat vong lap
-break_flag = False
+best_attributes = ['colour', 'location', 'page 1 (main category)', 'page']
 
-best_partitions = None
-best_modularity = -100
-best_graph = None
-best_attributes = None
+best_partitions, best_modularity, best_sihouette, best_clusters, best_show_cluster, best_graph = cluster(graph_data, number_of_train)
 
-minimum_divistion = 0.02
-max_cluser_loop_count = 0.5 / minimum_divistion 
-
-while cluster_loop_count < max_cluser_loop_count and not break_flag:
-    cluster_loop_count += 1
-    
-    # Tu bang grouped, ta tao duoc do thi tuong dong tu lop SimilarityGraph
-    graph = graph_data.remove_singleton(graph_data.get_knn_graph(attributes, threshold, 5))
-    
-    partitions, modularity = clustering(graph)
-
-    if modularity > best_modularity:
-        best_modularity = modularity
-        best_partitions = partitions
-        best_graph = graph
-        best_attributes = attributes
-
-    # Neu chi so modularity phu hop thi them vao nodes_list2, ket thuc vong lap
-    if modularity >= 0.5:
-        best_graph = graph
-        best_attributes = attributes
-        clusters = turn_to_clusters(partitions)
-        print("Modularity: ", modularity)
-        for cluster_id, cluster in clusters.items():
-            clusters_result.append(cluster)
-        break_flag = True
-    else:
-        removed = remove_attribute(attributes, graph, data)
-        if removed == False:
-            threshold += minimum_divistion
-            attributes = default_attributes.copy()     
-
-if not break_flag:
-    print("Modularity: ", best_modularity)
-    clusters = turn_to_clusters(best_partitions)
-    for cluster_id, cluster in clusters.items():
-        clusters_result.append(cluster)
-
+similarity_graph.show_graph(best_graph, best_show_cluster, showLegend = True, showEdges = False, showWeights = False)
 
 
 
 def find_cluster(sessionID1, best_partitions, test_grouped, train_grouped, check_attributes, threshold = 0):
     list_neighbours = LimitedSortedArray(5)
-
     
     for sessionID2, clusterID in best_partitions.items():
         distance = 0
@@ -224,16 +182,10 @@ def find_cluster(sessionID1, best_partitions, test_grouped, train_grouped, check
     return most_common_clusterID
 
 
+clusters = best_clusters
 
-
-total_f1_score = 0
-total_count = 0
-
-def test_model(sessionID, best_attributes = best_attributes, best_partitions = best_partitions, data = data, test_grouped = test_grouped, train_grouped = train_grouped):
-    clusters = turn_to_clusters(best_partitions)
+def test_model(sessionID, best_attributes = best_attributes, best_partitions = best_partitions, data = data, test_grouped = test_grouped, train_grouped = train_grouped, clusters = clusters):
     check_attributes = best_attributes.copy()
-    if 'page 2 (clothing model)' in check_attributes:
-        check_attributes.remove('page 2 (clothing model)')
     clusterID = find_cluster(sessionID, best_partitions, test_grouped, train_grouped, check_attributes)
     
     prediction_product = []
@@ -249,6 +201,14 @@ def test_model(sessionID, best_attributes = best_attributes, best_partitions = b
             for product_id in product_id_list:
                 if product_id[0] == given_product:
                     prediction_product.extend(product_id[1:])
+                if len(prediction_product) >= len(true_product_list)*2:
+                    break
+            if len(prediction_product) >= len(true_product_list)*2:
+                break
+        if len(prediction_product) >= len(true_product_list)*2:
+                break
+        
+
     
     matching_elements = set(prediction_product) & set(true_product_list)
     matching_count = len(matching_elements)
@@ -268,44 +228,32 @@ def test_model(sessionID, best_attributes = best_attributes, best_partitions = b
     else:
         f1_score = 2 * precision * recall / (precision + recall)
     
-    return f1_score
+    return precision, recall, f1_score
 
-
-# result = []
-# for sessionID in list(test_grouped['session ID']):
-#     result.append(test_model(sessionID, best_attributes, best_partitions, clusters, data, test_grouped, train_grouped))
-
-
-
-results = Parallel(n_jobs=-1)(
+print("Testing model....")
+results = Parallel(n_jobs=8, prefer="threads")(
     delayed(test_model)(sessionID) for sessionID in list(test_grouped['session ID'])
 )
+total_precision = 0
+total_recall = 0
+total_f1_score = 0
+total_count = 0
 
-
-for value in results:
-    total_f1_score += value
+for precision, recall, f1_score in results:
+    total_precision += precision
+    total_recall += recall
+    total_f1_score += f1_score
     total_count += 1
+
+print("Total precision: ", total_precision / total_count)
+print("Total recall: ", total_recall / total_count)
 print("Total F1 score: ", total_f1_score / total_count)
 
+end_time = time.time()
+elapsed_time = end_time - start_time
+print(f"Execution time: {elapsed_time:.4f} seconds")
 
-
-# for idx, cluster in enumerate(clusters_result):
-#     table = main_grouped[main_grouped['session ID'].isin(cluster)]
-#     print(f"\n\n----CLUSTER {idx}: ----")
-#     for attribute in best_attributes:
-#         all_ngrams = []
-
-#         # Loop through each row in the specified column
-#         for row in table[attribute]:
-#             all_ngrams.extend(row)
-        
-#         # Count the frequency of each n-gram
-#         ngram_counts = Counter(all_ngrams)
-#         print(f"{attribute}: {ngram_counts.most_common(2)}")
     
-# print(best_attributes)
-# print(threshold)
-# similarity_graph.show_graph(best_graph, clusters_result, showLegend = True, showEdges = False, showWeights = False)
 
 
 
