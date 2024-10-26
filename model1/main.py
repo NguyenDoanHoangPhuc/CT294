@@ -13,7 +13,7 @@ import matplotlib.patches as mpatches
 from pyvis.network import Network
 from scipy.stats import chi2_contingency
 from sklearn.metrics import silhouette_score
-from similarity_graph import similarity_graph, polar_distance, LimitedSortedArray
+from utils import similarity_graph, polar_distance, LimitedSortedArray
 import time
 
 #Hàm chuyển Partition thành Clusters
@@ -31,7 +31,6 @@ def turn_to_clusters(partition: list):
     # Lọc ra những cụm chỉ chứa một phần tử duy nhất
     filtered_clusters = {cluster_id: members for cluster_id, members in clusters.items() if len(members) > 1}
     return filtered_clusters
-
 
 # Hàm thực thi thuật toán Louvain
 # Trả về partition, chỉ số modularity và chỉ số sihouette
@@ -71,15 +70,14 @@ def cluster(graph_data: similarity_graph, length: int):
     break_flag = False
     # Ngưỡng nhỏ nhất mà các cạnh cần phải lớn hơn để được thêm vào đồ thị
     threshold = 0
-    # Biến đếm số lần lặp và số lần lặp tối đa
+    # Biến đếm số lần lặp
     cluster_loop_count = 0
-    max_cluser_loop_count = 5
 
     # Giá trị k trong thuật toán KNN Graph (được lấy tổng số đỉnh chia cho 2)
-    k = length // 2
+    k = length // 4
 
     # Hàm lặp khi chưa có cờ và số lần lặp chưa đạt tối đa
-    while cluster_loop_count <= max_cluser_loop_count and not break_flag:
+    while not break_flag and k <= length:
         
         # Tăng biến đếm và thông báo cho người dùng
         cluster_loop_count += 1
@@ -87,7 +85,7 @@ def cluster(graph_data: similarity_graph, length: int):
         
         # Tạo đồ thị KNN Graph từ dữ liệu Similarity Graph (get knn graph)
         # Sau đó tiến hành bỏ những phần tử không liên thông (remove singleton)
-        graph = graph_data.remove_singleton(graph_data.get_knn_graph(threshold, k))
+        graph = graph_data.remove_singleton(graph_data.get_kfn_graph(threshold, k))
         
         # Phân cụm đồ thị và lấy ra những giá trị tốt nhất
         partitions, modularity, silhouette = louvain_algorithm(graph)
@@ -96,8 +94,8 @@ def cluster(graph_data: similarity_graph, length: int):
         print(modularity)
         print(silhouette)
 
-        # Nếu chỉ số modularity đạt mức chấp nhận được, lưu lại các giá trị
-        if modularity > best_modularity:
+        # Nếu chỉ số silhouette đạt mức chấp nhận được, lưu lại các giá trị
+        if silhouette > best_sihouette:
             best_modularity = modularity
             best_sihouette = silhouette
             best_partitions = partitions 
@@ -105,11 +103,11 @@ def cluster(graph_data: similarity_graph, length: int):
 
 
         # Nếu chỉ số modularity đạt mức tốt => Ngưng vòng lặp
-        if modularity >= 0.3:
+        if silhouette >= 0.3:
             break_flag = True
         else:
-            # Ngược lại, giảm giá trị k để tăng modularity
-            k //= 2
+            # Ngược lại, tăng giá trị k lên 4 lần
+            k *= 4
         
     # Chuyển partition thành cluster và cluster_show
     best_clusters = turn_to_clusters(best_partitions)
@@ -122,85 +120,150 @@ def cluster(graph_data: similarity_graph, length: int):
     return best_partitions, best_modularity, best_sihouette, best_clusters, best_show_cluster, best_graph
     
 
-
 # Đọc dữ liệu từ CSV
 df = pd.read_csv('e-shop clothing 2008.csv', sep = ';')
 
 # Lấy ra n dòng đầu tiên từ dữ liệu cho trước
-data = df.head(1539).copy()
+data = df.head(1838).copy()
 
-#
+# Những thuộc tính mặc định
 default_attributes = ['page 2 (clothing model)', 'colour', 'location', 'page 1 (main category)', 'page']
 
-
+# Thời gian bắt đầu thực thi
 start_time = time.time()
 
-n_grams = 3
+# Tạo DataFrame mới để lưu trữ dữ liệu đã được nhóm theo sessionID và n-grams
+n_grams = 2
+
+# Tạo các cột cho DataFrame mới, bao gồm sessionID và các thuộc tính đã chọn
 main_columns_name = ['session ID'] + default_attributes 
 main_grouped = pd.DataFrame(columns = main_columns_name)
+
+# Nhóm dữ liệu theo sessionID và chia thành n-grams
 for idx, attribute in enumerate(default_attributes):
     temp = data.groupby('session ID')[attribute].apply(list).reset_index()
     filtered_temp = temp[temp[attribute].apply(lambda x: len(x) >= n_grams)]
     main_grouped[attribute] = filtered_temp[attribute].apply(lambda x: list(ngrams(x, n_grams)))
     main_grouped['session ID'] = filtered_temp['session ID']
 
-
+# Tính số lượng sessionID, số lượng train và test
 number_of_sessionID = main_grouped.shape[0]
 number_of_train = int(number_of_sessionID * 0.9)
 number_of_test = number_of_sessionID - number_of_train
 
+# Tạo dữ liệu train và test
 train_grouped = main_grouped.head(n = number_of_train)
 test_grouped = main_grouped.tail(n = number_of_test)
 
+# Tạo đồ thị tương tự từ dữ liệu train
 graph_data = similarity_graph(train_grouped, n_grams)
+
+# Tạo ma trận kề từ dữ liệu train
 graph_data.write_adjacency_matrix()
 
+# Tạo đồ thị mẫu từ ma trận kề
+# Đồ thị mẫu là đồ thị chỉ có đỉnh chứ không có cạnh, ta thực hiện thêm các cạnh vào sau
 graph_data.create_sample_graph(data)
 
+# Các thuộc tính tốt nhất để phân cụm
 best_attributes = ['colour', 'location', 'page 1 (main category)', 'page']
 
+# Phân cụm dữ liệu
 best_partitions, best_modularity, best_sihouette, best_clusters, best_show_cluster, best_graph = cluster(graph_data, number_of_train)
 
-similarity_graph.show_graph(best_graph, best_show_cluster, showLegend = True, showEdges = False, showWeights = False)
+# Hiển thị đồ thị tốt nhất, lưu nó lại dưới dạng file png
+similarity_graph.save_graph(best_graph, best_show_cluster, showLegend = True, showEdges = False, showWeights = False)
 
+# Xóa các biến cho việc hiển thị để tiết kiệm bộ nhớ
+del best_graph
+del best_show_cluster
 
-
+# Hàm tìm cụm gần nhất với sessionID đã cho
 def find_cluster(sessionID1, best_partitions, test_grouped, train_grouped, check_attributes, threshold = 0):
+    # Tạo một danh sách lưu trữ các cụm gần nhất
+    # Danh sách này sẽ tự động lưu trữ 5 giá trị lớn nhất
     list_neighbours = LimitedSortedArray(5)
-    
+
+    # Tính khoảng cách giữa sessionID1 và sessionID2
     for sessionID2, clusterID in best_partitions.items():
         distance = 0
+        # Tính khoảng cách giữa các thuộc tính
         for attribute in check_attributes:
             ngrams1 = test_grouped[test_grouped['session ID'] == sessionID1][attribute].values[0]
             ngrams2 = train_grouped[train_grouped['session ID'] == sessionID2][attribute].values[0]
             distance += 0.5 - polar_distance(ngrams1, ngrams2)
         distance /= float(len(check_attributes))
+        
+        # Nếu khoảng cách lớn hơn ngưỡng thì thêm vào danh sách
+        # Dữ liệu trong danh sách sẽ được lưu dưới dạng [khoảng cách: chỉ số cụm]
         if distance > threshold:
             list_neighbours.add([distance, clusterID])
     
-    most_common_clusterID = Counter([neighbour[1] for neighbour in list_neighbours.data]).most_common(1)[0][0]
+    # Lấy ra danh sách cụm trong danh sách đã cho
+    neighbour_clusters = [neighbour[1] for neighbour in list_neighbours.data]
+
+    # Trả về cụm phổ biến nhất
+    if neighbour_clusters:  
+        most_common_clusterID = Counter(neighbour_clusters).most_common(1)[0][0]
+    else:
+        # Nếu không có cụm nào thì trả về cụm đầu tiên
+        most_common_clusterID = 0  
     return most_common_clusterID
 
+# Partition thông thường rất dài, nên chúng ta sẽ tạo một từ điển sample_partitions để lưu trữ các cụm mẫu
+# Tạo một từ điển sample_partitions để lưu trữ các cụm mẫu
+# Mỗi cụm mẫu sẽ chứa 100 phần tử, phục vụ cho việc xét cụm được nhanh hơn
+sample_partitions = {}
 
-clusters = best_clusters
+# Tạo cụm mẫu cho từng cụm
+for clusterID, nodes in best_clusters.items():
+    count = 0
+    # Chỉ lấy 100 phần tử đầu tiên
+    for node in nodes:
+        count += 1
+        sample_partitions[node] = clusterID
+        if count > 100:
+            break
 
-def test_model(sessionID, best_attributes = best_attributes, best_partitions = best_partitions, data = data, test_grouped = test_grouped, train_grouped = train_grouped, clusters = clusters):
+# Hàm kiểm tra mô hình
+def test_model(sessionID, best_attributes = best_attributes, best_partitions = sample_partitions, data = data, test_grouped = test_grouped, train_grouped = train_grouped, clusters = best_clusters):
+    # Tạo một danh sách chứa các thuộc tính cần kiểm tra
     check_attributes = best_attributes.copy()
+    
+    # Tìm cụm gần nhất với sessionID đã cho
     clusterID = find_cluster(sessionID, best_partitions, test_grouped, train_grouped, check_attributes)
     
+    # Tạo danh sách chứa các sản phẩm dự đoán
     prediction_product = []
+    
+    # Lấy ra danh sách sản phẩm thực tế
     product_list = list(data[data['session ID'] == sessionID]['page 2 (clothing model)'])
 
+    # Chia danh sách sản phẩm thành 2 phần: given và trưe
+    # Given: phần danh sách sản phẩm được cho biết
+    # True: phần danh sách sản phẩm thực tế
+    # Given sẽ chiếm 1/3 tổng số sản phẩm, còn True chiếm 2/3
     one_third = len(product_list) // 3
     given_product_list =  product_list[:one_third]
     true_product_list = product_list[one_third:]
 
+    # Lặp qua danh sách given
     for given_product in given_product_list:
+        
+        # Lặp qua các sessionID trong cụm đã tìm được
         for node in clusters[clusterID]:
+
+            # Lấy ra danh sách sản phẩm từ sessionID
             product_id_list = train_grouped[train_grouped['session ID'] == node]['page 2 (clothing model)'].values[0]
+            
+            # Lặp qua danh sách sản phẩm
             for product_id in product_id_list:
+
+                # Nếu sản phẩm trùng với sản phẩm được cho biết thì thêm vào danh sách dự đoán
                 if product_id[0] == given_product:
                     prediction_product.extend(product_id[1:])
+                
+                # Nếu danh sách dự đoán đã đủ lớn thì dừng vòng lặp
                 if len(prediction_product) >= len(true_product_list)*2:
                     break
             if len(prediction_product) >= len(true_product_list)*2:
@@ -208,11 +271,11 @@ def test_model(sessionID, best_attributes = best_attributes, best_partitions = b
         if len(prediction_product) >= len(true_product_list)*2:
                 break
         
-
-    
+    # Tìm các sản phẩm trùng nhau giữa danh sách dự đoán và danh sách thực tế
     matching_elements = set(prediction_product) & set(true_product_list)
     matching_count = len(matching_elements)
 
+    # Tính precision, recall và f1_score
     if len(prediction_product) != 0:
         precision = matching_count / len(prediction_product)
     else:
@@ -231,9 +294,13 @@ def test_model(sessionID, best_attributes = best_attributes, best_partitions = b
     return precision, recall, f1_score
 
 print("Testing model....")
+
+# Thực thi việc kiểm tra mô hình, sử dụng Parallel để tăng tốc độ
 results = Parallel(n_jobs=8, prefer="threads")(
     delayed(test_model)(sessionID) for sessionID in list(test_grouped['session ID'])
 )
+
+# Tính toán precision, recall và f1_score trung bình
 total_precision = 0
 total_recall = 0
 total_f1_score = 0
@@ -249,11 +316,21 @@ print("Total precision: ", total_precision / total_count)
 print("Total recall: ", total_recall / total_count)
 print("Total F1 score: ", total_f1_score / total_count)
 
+# Thời gian kết thúc thực thi
 end_time = time.time()
 elapsed_time = end_time - start_time
 print(f"Execution time: {elapsed_time:.4f} seconds")
 
-    
+# Ghi dữ liệu vào file
+
+
+with open('D:\\File Code\\CT294_Project\\CT294\\model1\\data\\data_results.txt', 'w') as file:
+    file.write(f"Best modularity: {best_modularity}\n")
+    file.write(f"Best silhouette: {best_sihouette}\n")
+    file.write(f"Total precision: {total_precision / total_count}\n")
+    file.write(f"Total recall: {total_recall / total_count}\n")
+    file.write(f"Total F1 score: {total_f1_score / total_count}\n")
+    file.write(f"Execution time: {elapsed_time:.4f} seconds\n")
 
 
 
