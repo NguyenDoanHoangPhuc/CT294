@@ -1,0 +1,6 @@
+Best modularity: 0.27729298196873153
+Best silhouette: 0.13660006995712182
+Total precision: 0.09404133324587871
+Total recall: 0.13788370720188903
+Total F1 score: 0.10057067363217097
+Execution time: 11.3658 seconds
