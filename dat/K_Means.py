@@ -10,7 +10,6 @@ from sklearn.manifold import MDS
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 
-import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 
 def read_data_csv():
@@ -36,23 +35,34 @@ def read_data_csv():
     }
     
     # Chọn số hành động để phân tích trong chuỗi hành động
-    n_grams = 10
+    n_grams = 3
     
     # Đọc file csv với những thông tin ở trên
-    data = pd.read_csv(file_path, sep=_sep, dtype=dtypes, usecols=use_cols)# 41848
+    data = pd.read_csv(file_path, sep=_sep, dtype=dtypes, usecols=use_cols)
+    
+    # Hiển thị dữ liệu đọc vào
     print("\nDữ liệu đọc vào:\n", data)
 
-    # Chỉ giữ lại những session ID có số lần click chuột lớn hơn bằng n_grams
+    # Hiển thị dữ liệu trước khi loại bỏ các session ID có số lần click chuột nhỏ hơn n_grams
     print("\nDữ liệu trước khi loại bỏ các session ID có số lần click chuột nhỏ hơn n_grams:\n", data)
+    
+    # Chỉ giữ lại những session ID có số lần click chuột lớn hơn bằng n_grams
     data = data.groupby('session ID').filter(lambda x: len(x) >= n_grams)
+    
+    # Hiển thị dữ liệu sau khi loại bỏ các session ID có số lần click chuột nhỏ hơn n_grams
     print("\nDữ liệu sau khi loại bỏ các session ID có số lần click chuột nhỏ hơn n_grams:\n", data)
 
     # Với mỗi session ID, chuyển các chuỗi giá trị theo từng thuộc tính thành danh sách các n-gram và làm mới chỉ số dòng của dữ liệu
     data_ngrams = data.groupby('session ID').agg(lambda x: list(ngrams(x.to_list(), n_grams))).reset_index()
+
+    # Hiển thị dữ liệu n-grams
     print("\nDữ liệu n-grams:\n", data_ngrams)
+    
+    # Giải phóng bộ nhớ
     del data
     gc.collect()
-    # Trả về dữ liệu và dữ liệu n-grams đã xử lý
+    
+    # Trả về dữ liệu n-grams đã xử lý
     return data_ngrams
 
 def polar_distance(ngrams_list1, ngrams_list2):
@@ -91,34 +101,55 @@ def polar_distance(ngrams_list1, ngrams_list2):
     return polar_distance_result
 
 def polar_distance_matrix(data_ngrams, attributes):
-    '''Hàm tạo ma trận khoảng cách'''
+    '''Hàm tạo ma trận khoảng cách song song'''
+
+    # Số lượng session ID
     number_of_nodes = len(data_ngrams)
 
     def row_distance(row_index, data_ngrams, attributes):
+        '''Hàm tính khoảng cách giữa session ID tại row_index với các session ID còn lại'''
+
+        # Tạo danh sách khoảng cách
         row_matrix = np.empty(number_of_nodes, dtype=np.float16)
+
+        # Đặt khoảng cách từ session ID tại row_index đến chính nó là 0
         row_matrix[row_index] = 0
+
+        # Tính khoảng cách giữa session ID tại row_index với các session ID còn lại
         for col_index in range(row_index + 1, number_of_nodes):
-            total_similarity = sum(
+            # Tính tổng khoảng cách giữa session ID tại row_index với các session ID còn lại
+            total_distance = sum(
                 polar_distance(data_ngrams.at[row_index, attr], data_ngrams.at[col_index, attr])
                 for attr in attributes
             )
-            row_matrix[col_index] = total_similarity / len(attributes)
+            # Tính khoảng cách trung bình = tổng khoảng cách / số lượng thuộc tính
+            row_matrix[col_index] = total_distance / len(attributes)
+
+        # Trả về danh sách khoảng cách
         return row_matrix
     
-    distance_matrix = Parallel(n_jobs=-1)(
+    # Tạo ma trận khoảng cách bằng cách sử dụng song song
+    distance_matrix = Parallel(n_jobs=-1)( # n_jobs = -1 nghĩa là sử dụng tất cả các CPU có sẵn
+        # delayed(row_distance) là hàm trả về khoảng cách giữa session ID tại row_index với các session ID còn lại
         delayed(row_distance)(row_index, data_ngrams, attributes)
         for row_index in range(number_of_nodes)
     )
+
+    # Đối xứng ma trận khoảng cách
     for row_index in range(number_of_nodes):
         for col_index in range(row_index):
             distance_matrix[row_index][col_index] = distance_matrix[col_index][row_index]
+    
+    # Trả về ma trận khoảng cách song song
     return distance_matrix
 
 def K_means_clustering(data_ngrams, current_attributes, n_clusters):
     '''Hàm thực hiện phân cụm K-Means'''
-    
+
+    # Hiển thị các thuộc tính hiện tại
     print("\nPhân cụm K-Means với những thuộc tính hiện tại:\n", current_attributes)
     
+    # Hiển thị số lượng cụm
     print("\nSố lượng cụm: ", n_clusters)
     
     # Tạo ma trận khoảng cách polar giữa các session ID
@@ -130,21 +161,22 @@ def K_means_clustering(data_ngrams, current_attributes, n_clusters):
         metric=False, 
         random_state=42, 
         dissimilarity='precomputed',
-        # n_jobs=-1, 
-        normalized_stress=False,
+        normalized_stress=False
     )
     '''n_components = 3 nghĩa là chuyển đổi ma trận khoảng cách thành tọa độ điểm trong không gian 3 chiều
     metric = False nghĩa là sẽ tập trung vào việc bảo toàn thứ tự của các khoảng cách, không phải giá trị tuyệt đối của chúng
     random_state = 42 để đảm bảo kết quả có thể lặp lại
     dissimilarity = 'precomputed' nghĩa là ma trận khoảng cách đã được tính toán trước, không cần MDS tính toán lại
-    n_jobs = -1 để sử dụng tất cả các CPU có sẵn
     normalized_stress = False để không sử dụng chỉ số stress để đánh giá chất lượng việc giảm chiều dữ liệu'''
     
     # Chuyển đổi ma trận khoảng cách thành tọa độ điểm
-    points = mds.fit_transform(distance_matrix)
+    points = mds.fit_transform(distance_matrix) 
+
+    # Giải phóng bộ nhớ
     del mds
     del distance_matrix
     gc.collect()
+    
     # Thực hiện thuật toán K-means
     kmeans = KMeans(n_clusters, random_state=42)
     
@@ -152,20 +184,25 @@ def K_means_clustering(data_ngrams, current_attributes, n_clusters):
     clusters = kmeans.fit_predict(points)
 
     # Vẽ kết quả gom cụm K-Means sử dụng Plotly (tương tác)
-    # plot_3d_scatter(points, n_clusters, kmeans, clusters)
+    plot_3d_scatter(points, n_clusters, kmeans, clusters)
     
     # Tính chỉ số silhouette
     silhouette_avg = silhouette_score(points, clusters)
+
+    # Hiển thị chỉ số silhouette
     print(f"Chỉ số silhouette : {silhouette_avg}")
     
+    # Giải phóng bộ nhớ
     del points
     del kmeans
     gc.collect()
-    # Trả về kết quả phân cụm
+    
+    # Trả về kết quả phân cụm và chỉ số silhouette
     return clusters, silhouette_avg
 
 def plot_3d_scatter(points, n_clusters, kmeans, clusters):
     '''Vẽ kết quả gom cụm K-Means sử dụng Plotly (tương tác)'''
+
     # Vẽ các điểm
     fig = go.Figure(data=[go.Scatter3d(
         # Tọa độ của các điểm
@@ -259,68 +296,84 @@ class LimitedSortedArray:
             
 def find_cluster(index1_in_test_data, n_clusters, clusters, test_data, train_data, check_attributes):
     '''Hàm tìm cụm của session ID trong tập test'''
+
+    # Tạo danh sách LimitedSortedArray lưu trữ khoảng cách tới các session ID trong tập train
     list_neighbours = LimitedSortedArray(n_clusters + 1)
 
+    # Tính khoảng cách từ session ID tại index1_in_test_data đến các session ID trong tập train
     for index2_in_train_data in range(len(train_data)):
+        # Tính tổng khoảng cách giữa session ID tại index1_in_test_data với các session ID trong tập train
         total_distance = sum(
             polar_distance(test_data.at[index1_in_test_data, check_attribute], train_data.at[index2_in_train_data, check_attribute])
             for check_attribute in check_attributes
         )
+        # Tính khoảng cách trung bình = tổng khoảng cách / số lượng thuộc tính
         average_distance = total_distance / len(check_attributes)
+        # Thêm khoảng cách và index của session ID trong tập train vào danh sách
         list_neighbours.add((average_distance, index2_in_train_data))
     
+    # Lấy các index của session ID trong tập train tương ứng với khoảng cách nhỏ nhất
     neighbors_clusters = [clusters[index2_in_train_data] for _, index2_in_train_data in list_neighbours.data]
    
     most_common_clusterID = Counter(neighbors_clusters).most_common(1)[0][0]
 
+    # Trả về cụm của session ID tại index1_in_test_data
     return most_common_clusterID
 
 def test_model(index1_in_test_data, check_attributes, test_data, train_data, n_clusters, clusters):
     '''Hàm kiểm tra mô hình với tập test'''
+
+    # Tìm cụm của session ID tại index1_in_test_data
     clusterID = find_cluster(index1_in_test_data, n_clusters, clusters, test_data, train_data, check_attributes)
     
-    
+    # Tạo danh sách chứa các sản phẩm trong session ID tại index1_in_test_data
     product_list = list()
+
+    # Lặp qua các sản phẩm trong các n-grams của session ID tại index1_in_test_data, nếu sản phẩm không có trong danh sách thì thêm vào danh sách
     for n_grams in test_data.at[index1_in_test_data, 'page 2 (clothing model)']:
         for product in n_grams:
             if product not in product_list:
                 product_list.append(product)
-    # product_list = list(product_list)
     
+    # Chia danh sách sản phẩm thành 2 phần: 1/3 sản phẩm được cho trước, 2/3 sản phẩm cần dự đoán
     one_third = int(len(product_list) / 3)
     given_product_list =  product_list[:one_third]
-    # print(given_product_list)
     true_product_list = product_list[one_third:]
-    # print(true_product_list)
+    
     # Tạo một Series từ mảng clusters với index tương ứng với train_data
     cluster_series = pd.Series(clusters, index=train_data.index)
     
     # Lấy các session ID thuộc cụm clusterID
     session_ID_of_clusterID = train_data[cluster_series.isin([clusterID])]
     
+    # Tạo danh sách chứa các n-grams của các session ID thuộc cụm clusterID
     n_grams_list_of_cluster = [
         n_grams
         for n_grams_list in session_ID_of_clusterID['page 2 (clothing model)'] 
         for n_grams in n_grams_list
     ]
-    # print(n_grams_list_of_cluster)
-    prediction_product_limit = LimitedSortedArray(len(true_product_list)*2)
 
+    # Tạo danh sách chứa các sản phẩm dự đoán
+    prediction_product = set()
+
+    # Lặp qua các sản phẩm được cho trước
     for given_product in given_product_list:
+        count = 0
         for n_grams in n_grams_list_of_cluster:
             for i in range(len(n_grams) - 1):
                 if given_product == n_grams[i]:
                     next_product = n_grams[i + 1]
-                    prediction_product_limit.add((next_product, 1))
-    # print("dsgy",prediction_product_limit.data)
-    prediction_product = []
-    for product in prediction_product_limit.data:
-        prediction_product.append(product[0])
+                    if count <= len(true_product_list)*2:
+                        prediction_product.add(next_product)
+                        count += 1
 
-    matching_elements = set(prediction_product) & set(true_product_list)
+    # Tìm sản phẩm dự đoán trùng với sản phẩm thực tế
+    matching_elements = prediction_product & set(true_product_list)
     
+    # Đếm số lượng sản phẩm dự đoán trùng với sản phẩm thực tế
     matching_count = len(matching_elements)
 
+    # Tính các chỉ số f1-score, precision, recall để đánh giá mô hình 
     if len(prediction_product) != 0:
         precision = matching_count / len(prediction_product)
     else:
@@ -341,8 +394,10 @@ def test_model(index1_in_test_data, check_attributes, test_data, train_data, n_c
 def Evaluation_n_clusters(n_clusters):
     '''Hàm đánh giá chất lượng phân cụm với số lượng cụm là n_clusters'''
     
-    
+    # Các thuộc tính dùng để phân cụm
     attributes = ['page 1 (main category)', 'colour', 'location', 'page']   
+
+    # Hiển thị các thuộc tính dùng để phân cụm
     print("\nCác thuộc tính dùng để phân cụm:\n", attributes)
 
     # Đọc và xử lý dữ liệu
@@ -352,9 +407,12 @@ def Evaluation_n_clusters(n_clusters):
     _90_percent = int(len(data_ngrams) * 0.9)    
     train_data = data_ngrams.iloc[0:_90_percent]
     test_data = data_ngrams.iloc[_90_percent:]
+
+    # Giải phóng bộ nhớ
     del data_ngrams
     gc.collect()
 
+    # Reset index
     train_data.reset_index(drop=True, inplace=True)
     test_data.reset_index(drop=True, inplace=True)
     
@@ -362,68 +420,39 @@ def Evaluation_n_clusters(n_clusters):
     clusters, silhouette_avg = K_means_clustering(train_data, attributes, n_clusters)
 
     # Kiểm tra mô hình với tập test
-    # total_f1_score = Parallel(n_jobs=-1)(
-    #     delayed(test_model)(index1_in_test_data, attributes, test_data, train_data, n_clusters, clusters)
-    #     for index1_in_test_data in range(len(test_data))
-    # )
     total_f1_score = [
         test_model(index1_in_test_data, attributes, test_data, train_data, n_clusters, clusters)
         for index1_in_test_data in range(len(test_data))
     ]
 
+    # Giải phóng bộ nhớ
     del train_data, test_data
     gc.collect()
 
+    # Tính các chỉ số f1-score, precision, recall trung bình
     average_f1_score = sum(f1_score for f1_score, _, _ in total_f1_score) / len(total_f1_score)
     average_precision = sum(precision for _, precision, _ in total_f1_score) / len(total_f1_score)
     average_recall = sum(recall for _, _, recall in total_f1_score) / len(total_f1_score)
 
+    # Hiển thị các chỉ số f1-score, precision, recall trung bình
     print("\nf1-score:\n", average_f1_score)
     print("\nprecision:\n", average_precision)
     print("\nrecall:\n", average_recall)
 
+    # Trả về số lượng cụm, chỉ số silhouette, các chỉ số f1-score, precision, recall trung bình
     return n_clusters, silhouette_avg, average_f1_score, average_precision, average_recall
 
-def plot_metrics(n_clusters_list, silhouette_avg_list, f1_score_list, precision_list, recall_list):
-    x = np.arange(len(n_clusters_list))  # the label locations
-    width = 0.2  # the width of the bars
-
-    fig, ax = plt.subplots(figsize=(12, 6))
-    rects1 = ax.bar(x - 1.5*width, silhouette_avg_list, width, label='Silhouette Score')
-    rects2 = ax.bar(x - 0.5*width, f1_score_list, width, label='F1 Score')
-    rects3 = ax.bar(x + 0.5*width, precision_list, width, label='Precision')
-    rects4 = ax.bar(x + 1.5*width, recall_list, width, label='Recall')
-
-    # Add some text for labels, title and custom x-axis tick labels, etc.
-    ax.set_ylabel('Scores')
-    ax.set_xlabel('Number of Clusters')
-    ax.set_title('Metrics by Number of Clusters')
-    ax.set_xticks(x)
-    ax.set_xticklabels(n_clusters_list)
-    ax.legend()
-
-    # Add value labels on top of each bar
-    def autolabel(rects):
-        for rect in rects:
-            height = rect.get_height()
-            ax.annotate(f'{height:.2f}',
-                        xy=(rect.get_x() + rect.get_width() / 2, height),
-                        xytext=(0, 3),  # 3 points vertical offset
-                        textcoords="offset points",
-                        ha='center', va='bottom', rotation=0)
-
-    autolabel(rects1)
-    autolabel(rects2)
-    autolabel(rects3)
-    autolabel(rects4)
-
-    fig.tight_layout()
-    plt.show()
-
 if __name__=='__main__':
+    # Đánh dấu thời gian bắt đầu
     start_time = time.time()
-    Evaluation_n_clusters(2)
+
+    # Đánh giá chất lượng phân cụm với số lượng cụm chỉ định 
+    Evaluation_n_clusters(6)
+
+    # Đánh dấu thời gian kết thúc
     end_time = time.time()
+    
+    # Hiển thị thời gian chạy
     print("Time taken: ", end_time - start_time)
     
     
