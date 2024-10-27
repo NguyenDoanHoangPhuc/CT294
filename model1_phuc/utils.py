@@ -101,7 +101,8 @@ class similarity_graph:
         attributes = table_data.columns[2:]
 
         # Tạo mảng adjacency matrix để lưu trữ kết quả lên file .dat
-        adj_matrix = np.memmap(r'D:\File Code\CT294_Project\CT294\model1\data\adj_matrix.dat', dtype='float32', mode='w+', shape=(n, n))
+        save_path = r'D:\File Code\CT294_Project\CT294\model1\data\adj_matrix.dat'
+        adj_matrix = np.memmap(save_path, dtype='float32', mode='w+', shape=(n, n))
 
 
         # Hàm tính cạnh giữa hai node
@@ -157,7 +158,8 @@ class similarity_graph:
     def get_kfn_graph(self, threshold, k):
         
         # Tải ma trận kề vào bộ nhớ
-        adj_matrix = np.memmap(r'D:\File Code\CT294_Project\CT294\model1\data\adj_matrix.dat', dtype='float32', mode='c', shape=(self.num_nodes, self.num_nodes))
+        save_path = r'D:\File Code\CT294_Project\CT294\model1\data\adj_matrix.dat'
+        adj_matrix = np.memmap(save_path, dtype='float32', mode='c', shape=(self.num_nodes, self.num_nodes))
 
         # Tạo một bản sao của đồ thị mẫu
         G = self.graph.copy()
