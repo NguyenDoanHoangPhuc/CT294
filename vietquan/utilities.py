@@ -1,16 +1,12 @@
 
 import numpy as np
-from nltk import ngrams
 from joblib import Parallel, delayed
+import pandas as pd
 
 
 
 # Hàm để tính khoảng cách polar giữa hai chuỗi hành động
-
-def polar_distance(list1, list2, n):
-    # Tìm danh sách n-grams từ hai chuỗi ban đầu
-    ngrams_list1 = list(ngrams(list1, n))
-    ngrams_list2 = list(ngrams(list2, n))
+def polar_distance(ngrams_list1, ngrams_list2):
 
     # Tìm phần hợp giữa hai danh sách
     union_ngrams = ngrams_list1 + ngrams_list2
@@ -52,19 +48,16 @@ def polar_distance(list1, list2, n):
 
 
 
-def create_matrix(polar_distance, n_grams, table_data, attributes):
+def create_matrix(table_data, attributes):
 
     # Tạo ra ma trận với số lượng bằng với tên của node lớn nhất
     num_nodes = table_data['session ID'].max()
-    
-    # Tạo từ điển mặc định cho các thuộc tính
-    def create_default_dict():
-        return {attribute: 0 for attribute in attributes}
+    attributes = table_data.columns[1:]
+    data = np.zeros((num_nodes, num_nodes), dtype=float)
+    df = pd.DataFrame(data)
+    df.to_csv('matrix.csv', index=False)
 
-    # Tạo ma trận với các từ điển mặc định
-    matrix = [[create_default_dict() for _ in range(num_nodes)] for _ in range(num_nodes)]
-
-    def compute_edge(idx1, row1):
+    def compute_edge(idx1, row1): 
         session_id1 = row1['session ID']
         local_edges = []
         for idx2, row2 in table_data.iterrows():
@@ -72,22 +65,33 @@ def create_matrix(polar_distance, n_grams, table_data, attributes):
             if session_id2 > session_id1:
                 edge_dict = {}
                 for attribute in attributes:
-                    clothing_models1 = tuple(row1[attribute])
-                    clothing_models2 = tuple(row2[attribute])
-                    edge_dict[attribute] = 0.5 - polar_distance(clothing_models1, clothing_models2, n_grams)
+                    clothing_models1 = list(row1[attribute])
+                    clothing_models2 = list(row2[attribute])
+                    edge_dict[attribute] = 0.5 - polar_distance(clothing_models1, clothing_models2)
                 local_edges.append((session_id1, session_id2, edge_dict))
         return local_edges
 
     # Gọi Parallel để chạy song song
-    results = Parallel(n_jobs=-1)(
+    results = Parallel(n_jobs=-1,prefer="threads")(
         delayed(compute_edge)(idx1, row1) for idx1, row1 in table_data.iterrows()
     )
 
     # Cập nhật ma trận từ kết quả
     for local_edges in results:
         for session_id1, session_id2, edge_dict in local_edges:
-            matrix[session_id1 - 1][session_id2 - 1] = edge_dict
-            matrix[session_id2 - 1][session_id1 - 1] = edge_dict
+            sum = 0
+            for attribute in attributes:
+                sum+= edge_dict[attribute]
+            df.iloc[session_id1 - 1, session_id2- 1] = sum
+    df.to_csv('matrix.csv', index=False)
+    return None
 
-    return matrix
 
+def turn_to_cluster(partitions) :
+    clusters = {}
+    index = 0
+    for partition in partitions._formatted_cluster_iterator():
+        cluster = list(map(int, partition.split(', ')))
+        clusters[index] = cluster
+        index+=1
+    return clusters
